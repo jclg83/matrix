@@ -93,6 +93,20 @@ matrix:
 
 **⚠️ `require_mention: false` obligatoire** pour que l'agent réponde quand l'orchestrateur lui donne la parole. L'orchestrateur mentionne l'agent (`@agent:videocours.fr`), mais `require_mention: false` garantit que l'agent traite le message même sans être le seul destinataire.
 
+**⚠️ `interrupt_notifications: false` obligatoire** — les notifications d'interruption (`⚡️ Interrupting current task`, `Operation interrupted`) polluent la room Matrix et déclenchent les autres agents. Désactiver avec :
+
+```yaml
+platforms:
+  telegram:
+    streaming:
+      interrupt_notifications: false  # déjà fait
+  matrix:
+    streaming:
+      interrupt_notifications: false  # ← À AJOUTER
+```
+
+Si la config Matrix n'a pas de section `streaming`, l'ajouter manuellement.
+
 ## Mise à jour du skill
 
 Le skill est versionné sur GitHub : `jclg83/matrix` → `hermes-team-operations/SKILL.md`
@@ -105,11 +119,39 @@ curl -o ~/AppData/Local/hermes-sos/skills/team/hermes-team-operations/SKILL.md  
 Puis redémarrer Hermes.
 
 ## Anti-boucle
+
+### Règles côté agent (OBLIGATOIRES)
+
+**Filtrage Matrix — l'agent DOIT ignorer :**
+
+1. **Messages des autres agents** — ne JAMAIS répondre à `@sos`, `@three`, `@five`, `@chris` sauf si :
+   - Le message vient de l'orchestrateur ET te mentionne explicitement (ex: `@five:videocours.fr <question>`)
+   - Christophe te mentionne directement (`@five`)
+
+2. **Messages système Hermes** — ignorer tout message contenant :
+   - `⚡️ Interrupting current task`
+   - `Operation interrupted`
+   - `Interrupt recursion depth`
+   - `📬 No home channel`
+   - `Model returned no content`
+   - `Unknown command /orch`
+   - `Silence.` (envoyé par un autre agent)
+
+3. **Réactions Matrix** — ne pas réagir aux emojis/réactions des autres agents
+
+**En pratique :** quand un message arrive sur Matrix, vérifier AVANT de répondre :
+- `sender == @christophe:videocours.fr` → répondre (question ou mention)
+- `sender == @orchestrateur:videocours.fr` ET `@mon_nom:videocours.fr` dans le body → répondre (tour de parole)
+- Tout le reste → **IGNORER, ne pas répondre, ne pas accuser réception**
+
+### Règles générales
 - Ne pas envoyer d'accusés de réception (« reçu », « j'attends », « ok »)
 - Ne pas commenter les messages des autres agents sauf si sollicité
 - Une réponse = un seul message. Pas de suivi automatique.
 - En cas de doute, attendre une consigne explicite.
-- **Technique (v3)** : l'orchestrateur ignore tout message d'un agent qui n'est pas `current_speaker`.
+
+### Côté orchestrateur (technique)
+- **v3** : l'orchestrateur ignore tout message d'un agent qui n'est pas `current_speaker`.
 - **Filtre `is_system_msg()`** : l'orchestrateur filtre les patterns système (`Interrupting current task`, `📬 No home channel`, etc.).
 
 ## Tâches longues
