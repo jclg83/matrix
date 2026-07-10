@@ -1,7 +1,7 @@
 ---
 name: hermes-team-operations
 description: Règles de fonctionnement de l'équipe Hermes — architecture vitrine + rooms privées (v4), cycles collecte→diffusion, anti-boucle structurel.
-version: 2.9.1
+version: 2.9.2
 metadata:
   hermes:
     tags: [team, orchestration, rules, orchestrator-v4, commands, vitrine]
@@ -37,7 +37,7 @@ Mapping des rooms : `/opt/dendrite/data/private_rooms.json`
 
 ### Cycle : 2 phases (collecte → diffusion)
 
-1. **Phase 1 — Collecte** : Christophe pose une question dans la vitrine. L'orchestrateur l'envoie aux agents dans leurs rooms privées (**parallèle** par défaut, timeout 240s global ; mode séquentiel 240s/agent via `/orch mode sequential`). Chaque agent répond dans sa room privée au message qui le mentionne (`@agent:videocours.fr ❓ Question de Christophe : ...`). Séquenceur visible auto-édité dans la vitrine : `🔄 Cycle | Phase : collecte | Reçues : 2/4 (SOS ✅ Three ⏳ ...)`.
+1. **Phase 1 — Collecte** : Christophe pose une question dans la vitrine. L'orchestrateur l'envoie aux agents dans leurs rooms privées (**parallèle** par défaut, timeout 480s global ; mode séquentiel 480s/agent via `/orch mode sequential`). Chaque agent répond dans sa room privée au message qui le mentionne (`@agent:videocours.fr ❓ Question de Christophe : ...`). L'orchestrateur demande explicitement un préfixe final et ne capture comme réponse officielle que les messages commençant par `REPONSE FINALE <AGENT>:`. Séquenceur visible auto-édité dans la vitrine : `🔄 Cycle | Phase : collecte | Reçues : 2/4 (SOS ✅ Three ⏳ ...)`.
 
 2. **Phase 2 — Diffusion** : L'orchestrateur publie le récap complet `[SOS] ... [THREE] ... [FIVE] ... [CHRIS] ...` dans la vitrine (tronqué à 4000 chars/réponse), **ET** envoie le récap complet dans chaque room privée préfixé `📋 Récap (informatif — NE PAS RÉPONDRE)` → tous les agents ont les 4 réponses.
 
@@ -138,8 +138,8 @@ matrix:
 | Couche | Mécanisme | Garantie |
 |---|---|---|
 | **1. Serveur** | vitrine `events_default=51`, agents PL 50 (< 51) | L'agent ne peut JAMAIS poster dans la room commune (M_FORBIDDEN) |
-| **2. Structurel** | 4 rooms privées 1-à-1, récap sans mention | Un agent ne voit jamais un message brut d'un autre agent |
-| **3. Logiciel** | hors-cycle ignoré + log, `is_system_msg()` | Si agent poste dans sa room privée hors cycle → ignoré + loggé, zéro propagation |
+| **2. Structurel** | 4 rooms privées 1-à-1, récap informatif | Un agent ne voit jamais un message brut d'un autre agent |
+| **3. Logiciel** | réponses finales capturées uniquement si elles commencent par `REPONSE FINALE <AGENT>:` ; hors-cycle ignoré + log, `is_system_msg()` | Les messages outils/notifications/intermédiaires ne deviennent pas réponse officielle ; si agent poste hors cycle → ignoré + loggé, zéro propagation |
 
 Pire scénario : un agent répond au récap dans sa room privée. Personne ne le voit (c'est sa room privée). L'orchestrateur logge `HORS CYCLE: SOS - ignoré` et ne fait rien. Zéro boucle.
 
@@ -152,6 +152,19 @@ Les agents n'ont **plus besoin** de filtrer manuellement : leur gateway les prot
 3. **Ne pas répondre aux messages `📋 Récap`** — ils sont informatifs, pas des sollicitations
 4. **Messages système Hermes** à ignorer : `⚡ Interrupting current task`, `📬 No home channel`, `Operation interrupted`
 
+### Règle de réponse finale capturable
+
+Pendant un cycle orchestré, l'orchestrateur ignore tous les messages qui ne commencent pas par le préfixe final attendu. Chaque agent doit donc commencer son unique réponse finale exactement par :
+
+```text
+REPONSE FINALE SOS:
+REPONSE FINALE THREE:
+REPONSE FINALE FIVE:
+REPONSE FINALE CHRIS:
+```
+
+Le message envoyé par l'orchestrateur rappelle toujours le préfixe exact à utiliser. Les messages de progression, outils, lectures de skill, demandes d'approbation, warnings `No home channel`, etc. peuvent exister mais ne seront pas capturés comme réponse officielle.
+
 ## Tâches longues
 
 Un agent peut travailler en arrière-plan si Christophe lui a confié une mission. Les cycles de l'orchestrateur ne bloquent rien — ils sollicitent simplement l'agent dans sa room privée et attendent sa réponse (avec timeout 240s par défaut en mode parallèle).
@@ -161,8 +174,10 @@ Un agent peut travailler en arrière-plan si Christophe lui a confié une missio
 Les skills communes sont versionnées dans le dépôt Git `jclg83/matrix` (GitHub).
 Chaque agent les installe depuis cette source unique.
 
-**Procédure de mise à jour** : quand un agent (ex: SOS) maintient le skill sans avoir les droits
+**Procédure de mise à jour côté source** : quand un agent (ex: SOS) maintient le skill sans avoir les droits
 collaborateur sur le repo source → fork + PR. Détail complet dans `references/shared-skill-update-flow.md`.
+
+**Procédure de synchronisation côté agent** : quand Christophe demande de mettre à jour la copie locale depuis GitHub Matrix, récupérer `hermes-team-operations/` depuis `jclg83/matrix`, écrire `SKILL.md` + `references/`, puis vérifier byte-à-byte. Ne jamais laisser un backup contenant un `SKILL.md` du même `name:` sous le dossier `skills/`, sinon `skill_view` devient ambigu. Détail : `references/sync-shared-skill-from-github.md`.
 
 ## Décision humaine et périmètre des projets
 

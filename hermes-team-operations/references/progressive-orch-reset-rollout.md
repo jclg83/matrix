@@ -99,6 +99,21 @@ Validation finale réalisée : `orch appro` depuis la vitrine active APPRO sur `
 
 Pour tout prochain redémarrage du gateway Chris : annoncer avant exécution le motif, le diff/patch concerné, l’impact prévu et la fenêtre d’intervention ; attendre le GO explicite de Christophe. Éviter SIGKILL si le gateway a commencé son arrêt propre. Cette règle ne bloque pas les messages Matrix envoyés à Chris ni le redémarrage de l’orchestrateur Dendrite.
 
+## Capture déterministe des réponses finales
+
+L'orchestrateur ne doit plus traiter le premier message non filtré comme réponse officielle. Les agents Hermes produisent souvent des messages intermédiaires (`Reading skill`, `terminal`, `Working`, approvals, warnings). La capture officielle doit se faire uniquement sur un début de message strict :
+
+```text
+REPONSE FINALE SOS:
+REPONSE FINALE THREE:
+REPONSE FINALE FIVE:
+REPONSE FINALE CHRIS:
+```
+
+Le prompt de cycle envoyé par l'orchestrateur doit rappeler explicitement : `IMPORTANT : commence ta réponse finale par exactement : REPONSE FINALE <AGENT>:`. Tout autre message en collecte est journalisé `NON FINAL` et ignoré pour le récap.
+
+Timeouts recommandés après ce changement : `PAR_TIMEOUT = 480`, `SEQ_TIMEOUT = 480`.
+
 ## Mode économie pendant rollout
 
 Quand tous les agents sont dans `AUTO_RESET_AGENTS`, tester depuis la **vitrine avec Christophe comme émetteur**. Un message envoyé par le token de l'orchestrateur dans la vitrine ne passe pas le garde `sender == ADMIN_USER` et peut donner un faux négatif.
