@@ -112,6 +112,8 @@ REPONSE FINALE CHRIS:
 
 Le prompt de cycle envoyé par l'orchestrateur doit rappeler explicitement : `IMPORTANT : commence ta réponse finale par exactement : REPONSE FINALE <AGENT>:`. Tout autre message en collecte est journalisé `NON FINAL` et ignoré pour le récap.
 
+Piège critique : vérifier le préfixe final **avant** `is_system_msg()`. Sinon une réponse finale contenant des mots/outils filtrés (`search_files`, `skill_view`, etc.) peut être classée `System msg` et comptée timeout malgré le bon préfixe.
+
 Timeouts recommandés après ce changement : `PAR_TIMEOUT = 480`, `SEQ_TIMEOUT = 480`.
 
 ## Mode économie pendant rollout
