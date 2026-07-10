@@ -1,7 +1,7 @@
 ---
 name: hermes-team-operations
 description: Règles de fonctionnement de l'équipe Hermes — architecture vitrine + rooms privées (v4), cycles collecte→diffusion, anti-boucle structurel.
-version: 2.9.2
+version: 2.9.3
 metadata:
   hermes:
     tags: [team, orchestration, rules, orchestrator-v4, commands, vitrine]
@@ -164,6 +164,23 @@ REPONSE FINALE CHRIS:
 ```
 
 Le message envoyé par l'orchestrateur rappelle toujours le préfixe exact à utiliser. Les messages de progression, outils, lectures de skill, demandes d'approbation, warnings `No home channel`, etc. peuvent exister mais ne seront pas capturés comme réponse officielle.
+
+Si une action est bloquée par approval, l'agent doit quand même répondre avec le préfixe final attendu et indiquer clairement le blocage, par exemple :
+
+```text
+REPONSE FINALE FIVE: bloqué par approval sur commande <commande>, mise à jour non finalisée.
+```
+
+### Mise à jour de skill sans déclencher les approvals
+
+Quand Christophe demande de mettre à jour un skill partagé depuis GitHub, éviter les commandes shell qui déclenchent l'approval gate Hermes :
+
+- ne pas utiliser `rm -rf` ;
+- ne pas utiliser `python -c` dans `terminal` ;
+- ne pas faire `curl | python` ni autre pipe vers interpréteur ;
+- préférer la lecture GitHub via outil web/API sûr ;
+- préférer `skill_manage`, `write_file` et `patch` ;
+- préférer un remplacement ciblé ou une réécriture contrôlée de fichier à une suppression récursive.
 
 ## Tâches longues
 

@@ -26,6 +26,21 @@ C:\Users\strap\AppData\Local\hermes-sos\skills\team\hermes-team-operations\
 4. Écrire `SKILL.md` et tous les `references/*.md` depuis les raw/download URLs GitHub.
 5. Vérifier byte-à-byte que chaque fichier local correspond au remote.
 6. Relire un fichier de référence via `skill_view(name="hermes-team-operations", file_path="references/...")` pour confirmer que le skill n'est pas ambigu.
+7. Répondre à l'orchestrateur avec le préfixe final attendu, même en cas de blocage.
+
+## À éviter pour ne pas déclencher les approvals
+
+- Ne pas utiliser `rm -rf`.
+- Ne pas utiliser `python -c` dans `terminal`.
+- Ne pas faire `curl | python` ni pipe équivalent vers un interpréteur.
+- Préférer les outils Hermes sûrs : `skill_view`, `skill_manage`, `write_file`, `patch`, `web_extract`/API GitHub sûre.
+- Préférer un remplacement ciblé ou une réécriture contrôlée de fichier à une suppression récursive.
+
+Si une commande est bloquée par approval, ne pas attendre indéfiniment : répondre avec le préfixe final, par exemple :
+
+```text
+REPONSE FINALE FIVE: bloqué par approval sur commande <commande>, mise à jour non finalisée.
+```
 
 ## Validation minimale attendue
 
