@@ -1,7 +1,7 @@
 ---
 name: hermes-team-operations
 description: Règles de fonctionnement de l'équipe Hermes — architecture vitrine + rooms privées (v4), cycles collecte→diffusion, anti-boucle structurel.
-version: 2.9.0
+version: 2.9.1
 metadata:
   hermes:
     tags: [team, orchestration, rules, orchestrator-v4, commands, vitrine]
@@ -69,7 +69,8 @@ Christophe contrôle l'orchestrateur dans la vitrine. Formes acceptées : `/orch
 | `/orch enable @agent` ou `all` | Réintègre | `enable all` NOUVEAU |
 | `/orch queue` | Affiche les questions en attente | |
 | `/orch clearqueue` | Vide la file d'attente | |
-| `/orch reset` | Reset complet : vide `cycle_history`, `pending_questions`, état du cycle, ET envoie `@agent /new` à chaque agent dans sa room privée pour réinitialiser leur session. L'@mention est obligatoire car les agents ont `require_mention: true`. Utile après un changement de sujet pour repartir d'un contexte vierge (historique ET sessions agents). **Note** : les sessions agent ne sont vidées que si l'orchestrateur a été redémarré après une modification de code (le script tourne en continu, `kill` + relance requis). |
+| `/orch appro` | Active l'approbation temporaire sur **tous les agents validés** dans `AUTO_RESET_AGENTS`, via `@agent !yolo orch on <id>` dans chaque room privée | nécessite handler agent déployé |
+| `/orch reset` | Reset complet : vide `cycle_history`, `pending_questions`, état du cycle, désactive l'approbation temporaire, ET envoie `@agent !yolo orch reset` à chaque agent validé dans `AUTO_RESET_AGENTS` pour réinitialiser réellement leur session sans confirmation interactive. Utile après un changement de sujet pour repartir d'un contexte vierge (historique ET sessions agents). **Note** : les sessions agent ne sont vidées que si l'orchestrateur et les gateways concernés ont été redémarrés après modification de code. |
 | `/orch log [N]` | N dernières lignes de log | |
 | `/orch help` | Liste toutes les commandes | |
 | `/orch synthese` | **v4.2** — synthèse des réponses du dernier cycle. Envoie les réponses + historique à Chris (room privée) avec un prompt structuré (consensus, désaccords, évolutions). Utilise un buffer + filtre anti-bruit + finalisation après 8s de silence. Timeout 3 min. Affiche la synthèse dans la vitrine **ET dans toutes les rooms privées** des agents sous `🧠 Synthèse de CHRIS`. Détail complet dans `references/orch-synthese.md`. | |
@@ -160,10 +161,57 @@ Un agent peut travailler en arrière-plan si Christophe lui a confié une missio
 Les skills communes sont versionnées dans le dépôt Git `jclg83/matrix` (GitHub).
 Chaque agent les installe depuis cette source unique.
 
-## Décision humaine
+**Procédure de mise à jour** : quand un agent (ex: SOS) maintient le skill sans avoir les droits
+collaborateur sur le repo source → fork + PR. Détail complet dans `references/shared-skill-update-flow.md`.
+
+## Décision humaine et périmètre des projets
 
 Christophe est le seul décideur. Les agents proposent, Christophe tranche.
 Ne jamais déployer, modifier une config, ou lancer une action sans GO explicite.
+
+- Les changements **videocours.fr / Moodle / salle2cours.fr** en production demandent la décision à trois : Christophe, SOS et Hermes Chris.
+- Le projet **Matrix/Dendrite/orchestrateur** est distinct de videocours.fr/Moodle, malgré son hébergement sur le VPS `videocours.fr`. Il relève de SOS : un GO explicite de Christophe suffit pour y intervenir.
+
+## Approbations temporaires des cycles `/orch`
+
+Un état ajouté seulement à l’orchestrateur ne peut pas auto-approuver les commandes Hermes : les approval gates vivent dans les gateways de chaque agent. Une future commande `orch appro` doit donc être implémentée de bout en bout et limitée à la room/session ou au cycle concerné ; `orch reset`, un redémarrage et une expiration doivent la désactiver. Ne jamais utiliser `approvals.mode: off` global pour satisfaire ce besoin. Détails : `references/scoped-orch-approvals.md`.
+
+## Reset automatique progressif des sessions agents
+
+### Problème à éviter
+
+`/orch reset` ne doit **pas** envoyer naïvement `@agent /new` puis annoncer que les sessions sont réinitialisées. Dans les gateways Hermes, `/new` est destructif et peut retourner `⚠️ Confirm /new` : sans clic humain, la session reste intacte. Toujours lire les logs/retours Matrix avant de déclarer le reset effectif.
+
+### Pattern sûr : commande interne authentifiée
+
+Pour les approbations/resets orchestrés, chaque gateway doit reconnaître des formes internes idempotentes, par exemple :
+
+```text
+@agent:videocours.fr !yolo orch on <approval_id>
+@agent:videocours.fr !yolo orch reset
+```
+
+`orch appro` dans la vitrine doit dispatcher `!yolo orch on` à **tous** les agents de `AUTO_RESET_AGENTS`. Ne pas laisser une action historique de rollout comme `appro_sos_on` : après validation globale, `orch appro` doit utiliser une action générique (`appro_on`) et stocker l'état par liste d'agents (`orch_appro_agents`).
+
+Le handler doit vérifier **les trois conditions** avant toute action :
+
+1. plateforme Matrix ;
+2. room privée exacte de cet agent ;
+3. émetteur exact `@orchestrateur:videocours.fr`.
+
+Il doit désactiver l’état d’approbation temporaire, puis appeler directement le reset de session (`/new`) sans passer par la confirmation interactive. Toute tentative depuis un autre émetteur/room est refusée. Ne jamais utiliser `approvals.mode: off` globalement.
+
+### Déploiement agent par agent
+
+Introduire une liste explicite dans l’orchestrateur, p. ex. `AUTO_RESET_AGENTS`, contenant **uniquement** les agents déjà testés. Pendant le rollout :
+
+1. ajouter le handler à un seul gateway et le redémarrer ;
+2. tester `orch appro` puis `orch reset` de bout en bout ;
+3. prouver dans les logs : activation, désactivation, et message `New session started!` ;
+4. vérifier que les agents non validés sont explicitement journalisés comme ignorés — aucun faux `/new` ne doit leur être envoyé ;
+5. seulement alors ajouter l’agent validé à `AUTO_RESET_AGENTS` et passer au suivant.
+
+Le rollout complet a été validé dans l’ordre SOS → Three → Five → Chris. Les 4 agents sont maintenant dans `AUTO_RESET_AGENTS`, et le test global réel confirme : `orch appro` active APPRO sur les 4 ; `orch reset` envoie `@agent !yolo orch reset` aux 4 ; chaque agent répond `✨ New session started!` sans `Confirm /new`. Pour la procédure TDD détaillée, l’accès Windows via Chris, les redémarrages avec `HERMES_HOME` explicite, le diagnostic de gateways concurrents, le prérequis tunnel Five `:2522`, le redémarrage Chris avec GO préalable, et le mode économie quand le modèle actif est coûteux, voir [references/progressive-orch-reset-rollout.md](references/progressive-orch-reset-rollout.md).
 
 ## 📋 Cross-agent feature evaluation
 
